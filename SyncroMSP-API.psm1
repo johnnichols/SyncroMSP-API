@@ -36,7 +36,197 @@ function Get-SyncroAPIKey {
     
 }
 
-# API End Points
+# Helper function for getting a request url for the endpoints
+function Format-SyncroRequestUrl {
+    param (
+        [Parameter(Mandatory)] [string] $base_url,
+        [Parameter(Mandatory)] [string] $endpoint,
+        [Parameter(Mandatory)] [hashtable] $parameters,
+        [Parameter(Mandatory)] [ValidateSet("GET", "PUT", "POST", "DELETE")] [string] $method
+    )   
+
+    $key_index = 0
+    $request_url = $base_url + $endpoint
+    
+    # Put and Post requests will need other paramenters defined in the body
+    if ($method -eq "PUT" -or $method -eq "POST") {
+        
+        $body = @{}
+        foreach ($key in $parameters.keys) {
+            $parameter = $parameters[$key]
+        
+            if ($null -ne $parameter -and $parameter -ne '') {
+                if ($key -eq "id") {
+                    $id = $parameter
+                }
+                elseif ($key -ne "subdomain") {
+                    $body["$($key)"] = $parameter
+                }
+                
+            }
+        }
+
+    }
+    # Process parameters as url queries
+    else {
+        foreach ($key in $parameters.keys) {
+
+            $parameter = $parameters[$key]
+            if ($null -ne $value -and $value -ne '') {
+                if ($key_index -eq 0) {
+                    $request_url += "?"
+                }
+                else {
+                    $request_url += "&"
+                }
+                if ($parameter.name -eq "id") {
+                    $id = $parameter.value
+                }
+                $request_url += $parameter.name + "=" + $parameter.value
+                #write-host "$($parameter.name) : $($parameter.value)"
+            }
+
+            $key_index += 1
+        }
+    }
+
+    
+    if ($id) {
+        $request_url += "/$id"
+    }
+
+    $request = New-Object PsObject -Property @{ 
+        request_url = $request_url;
+        body        = $body;
+    }
+
+    return $request
+
+}
+
+############### API End Points ###############
+
+# Appointment Types
+
+function Get-SyncroAppointmentTypes {
+    param(
+        [Parameter(Mandatory = $true, ParameterSetName = 'List')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'ById')]
+        [string] $subdomain,
+
+        [Parameter(Mandatory = $true, ParameterSetName = 'ById')]
+        [int] $id
+    )
+    
+    $base_url = "https://$subdomain.syncromsp.com/api/v1"
+    $end_point = "/appointment_types"
+    $method = "GET"
+
+    $parameters = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
+            $parameters[$key] = $PSBoundParameters[$key]
+        }
+    }
+    
+    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
+    $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
+    
+    if ($PSCmdlet.ParameterSetName -eq 'List') {
+        return $response.appointment_types
+    }
+    else {
+        return $response
+    }
+}
+
+function New-SyncroAppointmentType {
+    param(
+        [Parameter(Mandatory = $true)] [string] $subdomain,
+        [Parameter(Mandatory = $true)] [string] $name,
+        [string] $email_instructions,
+        [Parameter(Mandatory = $true)] [int] $location_type,
+        [string] $location_hard_code
+    )
+    
+    $base_url = "https://$subdomain.syncromsp.com/api/v1"
+    $end_point = "/appointment_types"
+    $method = "POST"
+
+    $parameters = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
+            $parameters[$key] = $PSBoundParameters[$key]
+        }
+    }
+    
+    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
+    
+    if ($request.body) {
+        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -body ($request.body | convertTo-Json) -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText } -ContentType "application/json"
+    }
+    else {
+        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
+    }
+    
+    return $response
+}
+
+function Update-SyncroAppointmentType {
+    param(
+        [Parameter(Mandatory = $true)] [string] $subdomain,
+        [Parameter(Mandatory = $true)] [int] $id,
+        [string] $name,
+        [string] $email_instructions,
+        [int] $location_type,
+        [string] $location_hard_code
+    )
+    
+    $base_url = "https://$subdomain.syncromsp.com/api/v1"
+    $end_point = "/appointment_types"
+    $method = "PUT"
+
+    $parameters = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
+            $parameters[$key] = $PSBoundParameters[$key]
+        }
+    }
+    
+    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
+    
+    if ($request.body) {
+        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -body ($request.body | convertTo-Json) -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText } -ContentType "application/json"
+    }
+    else {
+        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
+    }
+    
+    return $response
+}
+
+function Remove-SyncroAppointmentType {
+    param(
+        [Parameter(Mandatory = $true)] [string] $subdomain,
+        [Parameter(Mandatory = $true)] [int] $id
+    )
+    
+    $base_url = "https://$subdomain.syncromsp.com/api/v1"
+    $end_point = "/appointment_types"
+    $method = "DELETE"
+
+    $parameters = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
+            $parameters[$key] = $PSBoundParameters[$key]
+        }
+    }
+    
+    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
+    $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
+    
+    return $response
+}
 
 ## Appointment
 
@@ -92,6 +282,8 @@ function Get-SyncroAppointments {
     }
 }
 
+
+
 # WIKI 
 function Add-SyncroWikiPage {
     param(
@@ -120,9 +312,6 @@ function Add-SyncroWikiPage {
     
     $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
     
-    #write-output ($request.request_url)
-    #write-output ($request.body | ConvertTo-Json -Depth 10)
-    
     # Add body to http request if the format function includes it
     if ($request.body) {
         $response = Invoke-RestMethod -Uri $request.request_url -Method $method -body ($request.body | convertTo-Json) -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText } -ContentType "application/json"
@@ -145,70 +334,6 @@ function Add-SyncroWikiPage {
 
 
 
-function Format-SyncroRequestUrl {
-    param (
-        [Parameter(Mandatory)] [string] $base_url,
-        [Parameter(Mandatory)] [string] $endpoint,
-        [Parameter(Mandatory)] [hashtable] $parameters,
-        [Parameter(Mandatory)] [ValidateSet("GET","PUT","POST","DELETE")] [string] $method
-    )   
 
-    $key_index = 0
-    $request_url = $base_url + $endpoint
-    
-    # Put and Post requests will need other paramenters defined in the body
-    if ($method -eq "PUT" -or $method -eq "POST") {
-        
-        $body = @{}
-        foreach ($key in $parameters.keys) {
-            $parameter = $parameters[$key]
-        
-            if ($null -ne $parameter -and $parameter -ne '') {
-                if ($key -eq "id") {
-                    $id = $parameter
-                } elseif ($key -ne "subdomain") {
-                    $body["$($key)"] = $parameter
-                }
-                
-            }
-        }
-
-    }
-    # Process parameters as url queries
-    else {
-        foreach ($key in $parameters.keys) {
-
-            $parameter = $parameters[$key]
-            if ($null -ne $value -and $value -ne '') {
-                if ($key_index -eq 0) {
-                    $request_url += "?"
-                }
-                else {
-                    $request_url += "&"
-                }
-                if ($parameter.name -eq "id") {
-                    $id = $parameter.value
-                }
-                $request_url += $parameter.name + "=" + $parameter.value
-                #write-host "$($parameter.name) : $($parameter.value)"
-            }
-
-            $key_index += 1
-        }
-    }
-
-    
-    if ($id) {
-        $request_url += "/$id"
-    }
-
-    $request = New-Object PsObject -Property @{ 
-        request_url = $request_url;
-        body        = $body;
-    }
-
-    return $request
-
-}
 
 Export-ModuleMember -Function *
