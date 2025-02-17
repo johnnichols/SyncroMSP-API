@@ -114,6 +114,46 @@ function Format-SyncroRequestUrl {
 
 }
 
+
+function Invoke-SyncroApi {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $subdomain,
+        
+        [Parameter(Mandatory = $true)]
+        [string] $endpoint,
+        
+        [Parameter(Mandatory = $false)]
+        [hashtable] $parameters,
+        
+        [Parameter(Mandatory = $false)]
+        [ValidateSet('GET', 'POST', 'PUT', 'DELETE')]
+        [string] $method = 'GET'
+    )
+    
+    $base_url = "https://$subdomain.syncromsp.com/api/v1"
+    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $endpoint -parameters $parameters -method $method
+    
+    $headers = @{
+        "Authorization" = "Bearer $(Get-Secret -name $subdomain -AsPlainText)"
+        "Content-Type"  = "application/json"
+    }
+    
+    $splat = @{
+        Uri     = $request.request_url
+        Method  = $method
+        Headers = $headers
+    }
+    
+    if ($method -in 'POST', 'PUT' -and $request.body) {
+        $splat['Body'] = $request.body | ConvertTo-Json
+    }
+    
+    $response = Invoke-RestMethod @splat
+    return $response
+}
+
+
 ############### API End Points ###############
 
 # Appointment Types
@@ -128,8 +168,7 @@ function Get-SyncroAppointmentTypes {
         [int] $id
     )
     
-    $base_url = "https://$subdomain.syncromsp.com/api/v1"
-    $end_point = "/appointment_types"
+    $endpoint = "/appointment_types"
     $method = "GET"
 
     $parameters = @{}
@@ -138,9 +177,8 @@ function Get-SyncroAppointmentTypes {
             $parameters[$key] = $PSBoundParameters[$key]
         }
     }
-    
-    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
-    $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
+
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $endpoint -parameters $parameters -method $method
     
     if ($PSCmdlet.ParameterSetName -eq 'List') {
         return $response.appointment_types
@@ -149,7 +187,6 @@ function Get-SyncroAppointmentTypes {
         return $response
     }
 }
-
 function New-SyncroAppointmentType {
     param(
         [Parameter(Mandatory = $true)] [string] $subdomain,
@@ -159,8 +196,7 @@ function New-SyncroAppointmentType {
         [string] $location_hard_code
     )
     
-    $base_url = "https://$subdomain.syncromsp.com/api/v1"
-    $end_point = "/appointment_types"
+    $endpoint = "/appointment_types"
     $method = "POST"
 
     $parameters = @{}
@@ -170,29 +206,21 @@ function New-SyncroAppointmentType {
         }
     }
     
-    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
-    
-    if ($request.body) {
-        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -body ($request.body | convertTo-Json) -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText } -ContentType "application/json"
-    }
-    else {
-        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
-    }
-    
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $endpoint -parameters $parameters -method $method
     return $response
 }
+
 
 function Update-SyncroAppointmentType {
     param(
         [Parameter(Mandatory = $true)] [string] $subdomain,
-        [Parameter(Mandatory = $true)] [int] $id,
+        [Parameter(Mandatory = $true)] [long] $id,
         [string] $name,
         [string] $email_instructions,
         [int] $location_type,
         [string] $location_hard_code
     )
     
-    $base_url = "https://$subdomain.syncromsp.com/api/v1"
     $end_point = "/appointment_types"
     $method = "PUT"
 
@@ -203,25 +231,16 @@ function Update-SyncroAppointmentType {
         }
     }
     
-    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
-    
-    if ($request.body) {
-        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -body ($request.body | convertTo-Json) -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText } -ContentType "application/json"
-    }
-    else {
-        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
-    }
-    
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
     return $response
 }
 
 function Remove-SyncroAppointmentType {
     param(
         [Parameter(Mandatory = $true)] [string] $subdomain,
-        [Parameter(Mandatory = $true)] [int] $id
+        [Parameter(Mandatory = $true)] [long] $id
     )
     
-    $base_url = "https://$subdomain.syncromsp.com/api/v1"
     $end_point = "/appointment_types"
     $method = "DELETE"
 
@@ -232,63 +251,55 @@ function Remove-SyncroAppointmentType {
         }
     }
     
-    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
-    $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
-    
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
     return $response
 }
 
-## Appointment
+
+#Appointments
 
 function Get-SyncroAppointments {
     param(
-        [Parameter(Mandatory = $true, ParameterSetName = 'ByFilters')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'List')]
         [Parameter(Mandatory = $true, ParameterSetName = 'ById')]
         [string] $subdomain,
 
-        [Parameter(ParameterSetName = 'ByFilters')]
-        [string] $date_from,
-
-        [Parameter(ParameterSetName = 'ByFilters')]
-        [string] $date_to,
-
-        [Parameter(ParameterSetName = 'ByFilters')]
-        [bool] $mine,
-
-        [Parameter(ParameterSetName = 'ByFilters')]
+        [Parameter(ParameterSetName = 'List')]
         [int] $page,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [int] $customer_id,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [int] $user_id,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [datetime] $start_date,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [datetime] $end_date,
 
         [Parameter(Mandatory = $true, ParameterSetName = 'ById')]
         [long] $id
     )
     
-    $base_url = "https://$subdomain.syncromsp.com/api/v1"
     $end_point = "/appointments"
     $method = "GET"
 
     $parameters = @{}
     foreach ($key in $PSBoundParameters.Keys) {
         if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
-            $parameters[$key] = $PSBoundParameters[$key] #.ToString()
+            $parameters[$key] = $PSBoundParameters[$key]
         }
     }
-    
-    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
 
-    # Add body to http request if the format function includes it
-    if ($request.body) {
-        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -body $request.body -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    
+    if ($PSCmdlet.ParameterSetName -eq 'List') {
+        return $response.appointments
     }
     else {
-        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
-    }
-    
-    # response object singular or plural
-    if ($response.($end_point.trimStart('/'))) {
-        return $response.($end_point.trimStart('/'))
-    }
-    elseif ($response.($end_point.trimStart('/').trimEnd('s'))) {
-        return $response.($end_point.trimStart('/').trimEnd('s'))
+        return $response.appointment
     }
 }
 
@@ -311,7 +322,6 @@ function New-SyncroAppointment {
         [bool] $all_day
     )
     
-    $base_url = "https://$subdomain.syncromsp.com/api/v1"
     $end_point = "/appointments"
     $method = "POST"
 
@@ -322,22 +332,14 @@ function New-SyncroAppointment {
         }
     }
     
-    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
-    
-    if ($request.body) {
-        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -body ($request.body | convertTo-Json) -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText } -ContentType "application/json"
-    }
-    else {
-        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
-    }
-    
-    return $response
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    return $response.appointment
 }
 
 function Update-SyncroAppointment {
     param(
         [Parameter(Mandatory = $true)] [string] $subdomain,
-        [Parameter(Mandatory = $true)] [int] $id,
+        [Parameter(Mandatory = $true)] [long] $id,
         [string] $summary,
         [string] $description,
         [Parameter(Mandatory = $true)] [datetime] $start_at,
@@ -353,7 +355,6 @@ function Update-SyncroAppointment {
         [bool] $all_day
     )
     
-    $base_url = "https://$subdomain.syncromsp.com/api/v1"
     $end_point = "/appointments"
     $method = "PUT"
 
@@ -364,24 +365,16 @@ function Update-SyncroAppointment {
         }
     }
     
-    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
-    
-    if ($request.body) {
-        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -body ($request.body | convertTo-Json) -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText } -ContentType "application/json"
-    }
-    else {
-        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
-    }
-    
-    return $response
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    return $response.appointment
 }
+
 function Remove-SyncroAppointment {
     param(
         [Parameter(Mandatory = $true)] [string] $subdomain,
-        [Parameter(Mandatory = $true)] [int] $id
+        [Parameter(Mandatory = $true)] [long] $id
     )
     
-    $base_url = "https://$subdomain.syncromsp.com/api/v1"
     $end_point = "/appointments"
     $method = "DELETE"
 
@@ -392,14 +385,11 @@ function Remove-SyncroAppointment {
         }
     }
     
-    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
-    $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
-    
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
     return $response
 }
 
-
-## Asset
+# Assets
 
 function Get-SyncroAssets {
     param(
@@ -426,7 +416,6 @@ function Get-SyncroAssets {
         [int] $id
     )
     
-    $base_url = "https://$subdomain.syncromsp.com/api/v1"
     $end_point = "/customer_assets"
     $method = "GET"
 
@@ -436,40 +425,28 @@ function Get-SyncroAssets {
             $parameters[$key] = $PSBoundParameters[$key]
         }
     }
-    
-    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
-    $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
+
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
     
     if ($PSCmdlet.ParameterSetName -eq 'List') {
         return $response.assets
     }
     else {
-        return $response.asset
+        return $response
     }
 }
 
 function New-SyncroAsset {
     param(
-        [Parameter(Mandatory = $true, ParameterSetName = 'ByTypeName')]
-        [Parameter(Mandatory = $true, ParameterSetName = 'ByTypeId')]
-        [string] $subdomain,
-
-        [Parameter(Mandatory = $true, ParameterSetName = 'ByTypeName')]
-        [Parameter(Mandatory = $true, ParameterSetName = 'ByTypeId')]
-        [string] $name,
-
-        [Parameter(Mandatory = $true, ParameterSetName = 'ByTypeName')]
+        [Parameter(Mandatory = $true)] [string] $subdomain,
+        [Parameter(Mandatory = $true)] [string] $name,
         [string] $asset_type_name,
-
-        [Parameter(Mandatory = $true, ParameterSetName = 'ByTypeId')]
         [int] $asset_type_id,
-
         [hashtable] $properties,
         [int] $customer_id,
         [string] $asset_serial
     )
     
-    $base_url = "https://$subdomain.syncromsp.com/api/v1"
     $end_point = "/customer_assets"
     $method = "POST"
 
@@ -480,16 +457,8 @@ function New-SyncroAsset {
         }
     }
     
-    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
-    
-    if ($request.body) {
-        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -body ($request.body | convertTo-Json) -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText } -ContentType "application/json"
-    }
-    else {
-        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
-    }
-    
-    return $response
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    return $response.asset
 }
 
 function Update-SyncroAsset {
@@ -504,7 +473,6 @@ function Update-SyncroAsset {
         [string] $asset_serial
     )
     
-    $base_url = "https://$subdomain.syncromsp.com/api/v1"
     $end_point = "/customer_assets"
     $method = "PUT"
 
@@ -515,43 +483,11 @@ function Update-SyncroAsset {
         }
     }
     
-    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
-    
-    if ($request.body) {
-        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -body ($request.body | convertTo-Json) -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText } -ContentType "application/json"
-    }
-    else {
-        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
-    }
-    
-    return $response
-}
-# Call
-function Get-SyncroCallerId {
-    param(
-        [Parameter(Mandatory = $true)] [string] $subdomain,
-        [Parameter(Mandatory = $true)] [string] $did,
-        [bool] $outbound
-    )
-    
-    $base_url = "https://$subdomain.syncromsp.com/api/v1"
-    $end_point = "/callerid"
-    $method = "GET"
-
-    $parameters = @{}
-    foreach ($key in $PSBoundParameters.Keys) {
-        if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
-            $parameters[$key] = $PSBoundParameters[$key]
-        }
-    }
-    
-    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
-    $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
-    
-    return $response
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    return $response.asset
 }
 
-# Contacts
+# Contact
 
 function Get-SyncroContacts {
     param(
@@ -569,7 +505,6 @@ function Get-SyncroContacts {
         [int] $id
     )
     
-    $base_url = "https://$subdomain.syncromsp.com/api/v1"
     $end_point = "/contacts"
     $method = "GET"
 
@@ -579,9 +514,8 @@ function Get-SyncroContacts {
             $parameters[$key] = $PSBoundParameters[$key]
         }
     }
-    
-    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
-    $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
+
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
     
     if ($PSCmdlet.ParameterSetName -eq 'List') {
         return $response.contacts
@@ -607,7 +541,6 @@ function New-SyncroContact {
         [string] $notes
     )
     
-    $base_url = "https://$subdomain.syncromsp.com/api/v1"
     $end_point = "/contacts"
     $method = "POST"
 
@@ -618,24 +551,16 @@ function New-SyncroContact {
         }
     }
     
-    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
-    
-    if ($request.body) {
-        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -body ($request.body | convertTo-Json) -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText } -ContentType "application/json"
-    }
-    else {
-        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
-    }
-    
-    return $response.contact
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    return $response
 }
 
 function Update-SyncroContact {
     param(
         [Parameter(Mandatory = $true)] [string] $subdomain,
         [Parameter(Mandatory = $true)] [int] $id,
-        [int] $customer_id,
         [Parameter(Mandatory = $true)] [string] $name,
+        [int] $customer_id,
         [string] $address1,
         [string] $address2,
         [string] $city,
@@ -643,12 +568,10 @@ function Update-SyncroContact {
         [string] $zip,
         [string] $email,
         [string] $phone,
-        [string] $title,
         [string] $mobile,
         [string] $notes
     )
     
-    $base_url = "https://$subdomain.syncromsp.com/api/v1"
     $end_point = "/contacts"
     $method = "PUT"
 
@@ -659,16 +582,8 @@ function Update-SyncroContact {
         }
     }
     
-    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
-    
-    if ($request.body) {
-        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -body ($request.body | convertTo-Json) -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText } -ContentType "application/json"
-    }
-    else {
-        $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
-    }
-    
-    return $response.contact
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    return $response
 }
 
 function Remove-SyncroContact {
@@ -677,7 +592,6 @@ function Remove-SyncroContact {
         [Parameter(Mandatory = $true)] [int] $id
     )
     
-    $base_url = "https://$subdomain.syncromsp.com/api/v1"
     $end_point = "/contacts"
     $method = "DELETE"
 
@@ -688,9 +602,410 @@ function Remove-SyncroContact {
         }
     }
     
-    $request = Format-SyncroRequestUrl -base_url $base_url -endpoint $end_point -parameters $parameters -method $method
-    $response = Invoke-RestMethod -Uri $request.request_url -Method $method -Headers @{"Authorization" = Get-Secret -name $subdomain -AsPlainText }
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    return $response
+}
+
+# Contracts
+
+function Get-SyncroContracts {
+    param(
+        [Parameter(Mandatory = $true, ParameterSetName = 'List')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'ById')]
+        [string] $subdomain,
+
+        [Parameter(ParameterSetName = 'List')]
+        [int] $customer_id,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [int] $page,
+
+        [Parameter(Mandatory = $true, ParameterSetName = 'ById')]
+        [int] $id
+    )
     
+    $end_point = "/contracts"
+    $method = "GET"
+
+    $parameters = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
+            $parameters[$key] = $PSBoundParameters[$key]
+        }
+    }
+
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    
+    if ($PSCmdlet.ParameterSetName -eq 'List') {
+        return $response.contracts
+    }
+    else {
+        return $response
+    }
+}
+
+function New-SyncroContract {
+    param(
+        [Parameter(Mandatory = $true)] [string] $subdomain,
+        [Parameter(Mandatory = $true)] [int] $customer_id,
+        [Parameter(Mandatory = $true)] [string] $title,
+        [string] $description,
+        [datetime] $start_date,
+        [datetime] $end_date,
+        [decimal] $price,
+        [string] $frequency,
+        [bool] $automatically_renew,
+        [bool] $send_invoice_automatically,
+        [bool] $active
+    )
+    
+    $end_point = "/contracts"
+    $method = "POST"
+
+    $parameters = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
+            $parameters[$key] = $PSBoundParameters[$key]
+        }
+    }
+    
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    return $response
+}
+
+function Update-SyncroContract {
+    param(
+        [Parameter(Mandatory = $true)] [string] $subdomain,
+        [Parameter(Mandatory = $true)] [int] $id,
+        [string] $title,
+        [string] $description,
+        [datetime] $start_date,
+        [datetime] $end_date,
+        [decimal] $price,
+        [string] $frequency,
+        [bool] $automatically_renew,
+        [bool] $send_invoice_automatically,
+        [bool] $active
+    )
+    
+    $end_point = "/contracts"
+    $method = "PUT"
+
+    $parameters = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
+            $parameters[$key] = $PSBoundParameters[$key]
+        }
+    }
+    
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    return $response
+}
+
+function Remove-SyncroContract {
+    param(
+        [Parameter(Mandatory = $true)] [string] $subdomain,
+        [Parameter(Mandatory = $true)] [int] $id
+    )
+    
+    $end_point = "/contracts"
+    $method = "DELETE"
+
+    $parameters = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
+            $parameters[$key] = $PSBoundParameters[$key]
+        }
+    }
+    
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    return $response
+}
+
+# Customer
+
+function Get-SyncroCustomers {
+    param(
+        [Parameter(Mandatory = $true, ParameterSetName = 'List')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'ById')]
+        [string] $subdomain,
+
+        [Parameter(ParameterSetName = 'List')]
+        [string] $query,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [int] $page,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [string] $business_name,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [string] $email,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [string] $phone,
+
+        [Parameter(Mandatory = $true, ParameterSetName = 'ById')]
+        [int] $id
+    )
+    
+    $end_point = "/customers"
+    $method = "GET"
+
+    $parameters = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
+            $parameters[$key] = $PSBoundParameters[$key]
+        }
+    }
+
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    
+    if ($PSCmdlet.ParameterSetName -eq 'List') {
+        return $response.customers
+    }
+    else {
+        return $response.customer
+    }
+}
+
+function New-SyncroCustomer {
+    param(
+        [Parameter(Mandatory = $true)] [string] $subdomain,
+        [Parameter(Mandatory = $true)] [string] $business_name,
+        [string] $firstname,
+        [string] $lastname,
+        [string] $email,
+        [string] $phone,
+        [string] $mobile,
+        [string] $address,
+        [string] $address2,
+        [string] $city,
+        [string] $state,
+        [string] $zip,
+        [string] $notes,
+        [bool] $referred_by,
+        [bool] $allow_portal,
+        [bool] $portal_access,
+        [bool] $portal_access_template,
+        [string] $tax_rate,
+        [string] $notification_email,
+        [string] $invoice_cc_emails,
+        [string] $invoice_term_id,
+        [bool] $no_tax,
+        [bool] $print_notes_on_invoice,
+        [hashtable] $properties
+    )
+    
+    $end_point = "/customers"
+    $method = "POST"
+
+    $parameters = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
+            $parameters[$key] = $PSBoundParameters[$key]
+        }
+    }
+    
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    return $response.customer
+}
+
+function Update-SyncroCustomer {
+    param(
+        [Parameter(Mandatory = $true)] [string] $subdomain,
+        [Parameter(Mandatory = $true)] [int] $id,
+        [string] $business_name,
+        [string] $firstname,
+        [string] $lastname,
+        [string] $email,
+        [string] $phone,
+        [string] $mobile,
+        [string] $address,
+        [string] $address2,
+        [string] $city,
+        [string] $state,
+        [string] $zip,
+        [string] $notes,
+        [bool] $referred_by,
+        [bool] $allow_portal,
+        [bool] $portal_access,
+        [bool] $portal_access_template,
+        [string] $tax_rate,
+        [string] $notification_email,
+        [string] $invoice_cc_emails,
+        [string] $invoice_term_id,
+        [bool] $no_tax,
+        [bool] $print_notes_on_invoice,
+        [hashtable] $properties
+    )
+    
+    $end_point = "/customers"
+    $method = "PUT"
+
+    $parameters = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
+            $parameters[$key] = $PSBoundParameters[$key]
+        }
+    }
+    
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    return $response.customer
+}
+
+function Remove-SyncroCustomer {
+    param(
+        [Parameter(Mandatory = $true)] [string] $subdomain,
+        [Parameter(Mandatory = $true)] [int] $id
+    )
+    
+    $end_point = "/customers"
+    $method = "DELETE"
+
+    $parameters = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
+            $parameters[$key] = $PSBoundParameters[$key]
+        }
+    }
+    
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    return $response
+}
+
+# Estimate
+
+function Get-SyncroEstimates {
+    param(
+        [Parameter(Mandatory = $true, ParameterSetName = 'List')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'ById')]
+        [string] $subdomain,
+
+        [Parameter(ParameterSetName = 'List')]
+        [int] $customer_id,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [string] $number,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [string] $status,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [int] $page,
+
+        [Parameter(Mandatory = $true, ParameterSetName = 'ById')]
+        [int] $id
+    )
+    
+    $end_point = "/estimates"
+    $method = "GET"
+
+    $parameters = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
+            $parameters[$key] = $PSBoundParameters[$key]
+        }
+    }
+
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    
+    if ($PSCmdlet.ParameterSetName -eq 'List') {
+        return $response.estimates
+    }
+    else {
+        return $response.estimate
+    }
+}
+
+function New-SyncroEstimate {
+    param(
+        [Parameter(Mandatory = $true)] [string] $subdomain,
+        [Parameter(Mandatory = $true)] [int] $customer_id,
+        [string] $number,
+        [string] $status,
+        [datetime] $date,
+        [string] $note,
+        [string] $po_number,
+        [string] $terms,
+        [bool] $sent,
+        [bool] $viewed,
+        [bool] $accepted,
+        [bool] $declined,
+        [array] $line_items,
+        [decimal] $tax_rate,
+        [bool] $no_tax,
+        [bool] $no_charge,
+        [string] $ticket_id
+    )
+    
+    $end_point = "/estimates"
+    $method = "POST"
+
+    $parameters = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
+            $parameters[$key] = $PSBoundParameters[$key]
+        }
+    }
+    
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    return $response.estimate
+}
+
+function Update-SyncroEstimate {
+    param(
+        [Parameter(Mandatory = $true)] [string] $subdomain,
+        [Parameter(Mandatory = $true)] [int] $id,
+        [int] $customer_id,
+        [string] $number,
+        [string] $status,
+        [datetime] $date,
+        [string] $note,
+        [string] $po_number,
+        [string] $terms,
+        [bool] $sent,
+        [bool] $viewed,
+        [bool] $accepted,
+        [bool] $declined,
+        [array] $line_items,
+        [decimal] $tax_rate,
+        [bool] $no_tax,
+        [bool] $no_charge,
+        [string] $ticket_id
+    )
+    
+    $end_point = "/estimates"
+    $method = "PUT"
+
+    $parameters = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
+            $parameters[$key] = $PSBoundParameters[$key]
+        }
+    }
+    
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    return $response.estimate
+}
+
+function Remove-SyncroEstimate {
+    param(
+        [Parameter(Mandatory = $true)] [string] $subdomain,
+        [Parameter(Mandatory = $true)] [int] $id
+    )
+    
+    $end_point = "/estimates"
+    $method = "DELETE"
+
+    $parameters = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
+            $parameters[$key] = $PSBoundParameters[$key]
+        }
+    }
+    
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
     return $response
 }
 
