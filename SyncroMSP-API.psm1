@@ -613,9 +613,6 @@ function Get-SyncroContracts {
         [Parameter(Mandatory = $true, ParameterSetName = 'List')]
         [Parameter(Mandatory = $true, ParameterSetName = 'ById')]
         [string] $subdomain,
-
-        [Parameter(ParameterSetName = 'List')]
-        [int] $customer_id,
         
         [Parameter(ParameterSetName = 'List')]
         [int] $page,
@@ -648,15 +645,16 @@ function New-SyncroContract {
     param(
         [Parameter(Mandatory = $true)] [string] $subdomain,
         [Parameter(Mandatory = $true)] [int] $customer_id,
-        [Parameter(Mandatory = $true)] [string] $title,
+        [string] $contract_amount,
         [string] $description,
         [datetime] $start_date,
         [datetime] $end_date,
-        [decimal] $price,
-        [string] $frequency,
-        [bool] $automatically_renew,
-        [bool] $send_invoice_automatically,
-        [bool] $active
+        [string] $name,
+        [string] $primary_contact,
+        [string] $status,
+        [int] $likelihood,
+        [bool] $apply_to_all,
+        [int] $sla_id
     )
     
     $end_point = "/contracts"
@@ -677,15 +675,17 @@ function Update-SyncroContract {
     param(
         [Parameter(Mandatory = $true)] [string] $subdomain,
         [Parameter(Mandatory = $true)] [int] $id,
-        [string] $title,
+        [Parameter(Mandatory = $true)] [int] $customer_id,
+        [string] $contract_amount,
         [string] $description,
         [datetime] $start_date,
         [datetime] $end_date,
-        [decimal] $price,
-        [string] $frequency,
-        [bool] $automatically_renew,
-        [bool] $send_invoice_automatically,
-        [bool] $active
+        [string] $name,
+        [string] $primary_contact,
+        [string] $status,
+        [int] $likelihood,
+        [bool] $apply_to_all,
+        [int] $sla_id
     )
     
     $end_point = "/contracts"
@@ -731,22 +731,37 @@ function Get-SyncroCustomers {
         [string] $subdomain,
 
         [Parameter(ParameterSetName = 'List')]
+        [string] $sort,
+        
+        [Parameter(ParameterSetName = 'List')]
         [string] $query,
         
         [Parameter(ParameterSetName = 'List')]
-        [int] $page,
+        [string] $firstname,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [string] $lastname,
         
         [Parameter(ParameterSetName = 'List')]
         [string] $business_name,
         
         [Parameter(ParameterSetName = 'List')]
+        [int[]] $id,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [int[]] $not_id,
+        
+        [Parameter(ParameterSetName = 'List')]
         [string] $email,
         
         [Parameter(ParameterSetName = 'List')]
-        [string] $phone,
+        [string] $include_disabled,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [int] $page,
 
         [Parameter(Mandatory = $true, ParameterSetName = 'ById')]
-        [int] $id
+        [int] $customer_id
     )
     
     $end_point = "/customers"
@@ -779,24 +794,27 @@ function New-SyncroCustomer {
         [string] $phone,
         [string] $mobile,
         [string] $address,
-        [string] $address2,
+        [string] $address_2, 
         [string] $city,
         [string] $state,
         [string] $zip,
         [string] $notes,
-        [bool] $referred_by,
-        [bool] $allow_portal,
-        [bool] $portal_access,
-        [bool] $portal_access_template,
-        [string] $tax_rate,
+        [bool] $get_sms, 
+        [bool] $opt_out, 
+        [bool] $no_email, 
+        [bool] $get_billing, 
+        [bool] $get_marketing, 
+        [bool] $get_reports, 
+        [int] $ref_customer_id, 
+        [string] $referred_by,
+        [int] $tax_rate_id, 
         [string] $notification_email,
         [string] $invoice_cc_emails,
-        [string] $invoice_term_id,
-        [bool] $no_tax,
-        [bool] $print_notes_on_invoice,
-        [hashtable] $properties
+        [int] $invoice_term_id,
+        [hashtable] $properties,
+        [hashtable] $consent             
     )
-    
+
     $end_point = "/customers"
     $method = "POST"
 
@@ -822,22 +840,25 @@ function Update-SyncroCustomer {
         [string] $phone,
         [string] $mobile,
         [string] $address,
-        [string] $address2,
+        [string] $address_2,
         [string] $city,
         [string] $state,
         [string] $zip,
         [string] $notes,
-        [bool] $referred_by,
-        [bool] $allow_portal,
-        [bool] $portal_access,
-        [bool] $portal_access_template,
-        [string] $tax_rate,
+        [bool] $get_sms,
+        [bool] $opt_out,
+        [bool] $no_email,
+        [bool] $get_billing,
+        [bool] $get_marketing,
+        [bool] $get_reports,
+        [int] $ref_customer_id,
+        [string] $referred_by,
+        [int] $tax_rate_id,
         [string] $notification_email,
         [string] $invoice_cc_emails,
-        [string] $invoice_term_id,
-        [bool] $no_tax,
-        [bool] $print_notes_on_invoice,
-        [hashtable] $properties
+        [int] $invoice_term_id,
+        [hashtable] $properties,
+        [hashtable] $consent
     )
     
     $end_point = "/customers"
@@ -1008,6 +1029,54 @@ function Remove-SyncroEstimate {
     $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
     return $response
 }
+
+# Invoice
+function Get-SyncroInvoices {
+    param(
+        [Parameter(Mandatory = $true, ParameterSetName = 'List')]
+        [Parameter(Mandatory = $true, ParameterSetName = 'ById')]
+        [string] $subdomain,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [int] $customer_id,
+        
+        [Parameter(ParameterSetName = 'List')] 
+        [ValidateSet('draft', 'open', 'paid', 'partial', 'void')]
+        [string] $status,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [datetime] $created_after,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [datetime] $created_before,
+        
+        [Parameter(ParameterSetName = 'List')]
+        [int] $page,
+        
+        [Parameter(Mandatory = $true, ParameterSetName = 'ById')]
+        [int] $id
+    )
+    
+    $end_point = "/invoices"
+    $method = "GET"
+
+    $parameters = @{}
+    foreach ($key in $PSBoundParameters.Keys) {
+        if ($key -ne 'verbose' -and $key -ne 'debug' -and $key -ne 'erroraction' -and $key -ne 'warningaction' -and $key -ne 'informationaction' -and $key -ne 'errorvariable' -and $key -ne 'warningvariable' -and $key -ne 'informationvariable' -and $key -ne 'outbuffer' -and $key -ne 'pipelinevariable') {
+            $parameters[$key] = $PSBoundParameters[$key]
+        }
+    }
+
+    $response = Invoke-SyncroApi -subdomain $subdomain -endpoint $end_point -parameters $parameters -method $method
+    
+    if ($PSCmdlet.ParameterSetName -eq 'List') {
+        return $response.invoices
+    }
+    else {
+        return $response.invoice
+    }
+}
+
 
 # WIKI 
 function Add-SyncroWikiPage {
